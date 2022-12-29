@@ -46,6 +46,10 @@ func (t *Target) accumulate() error { //nolint:gocyclo
 		return err
 	}
 
+	// NOTE - this code is dependent on the kustomization
+	//  file format and meaning; if there's a new category
+	//  that can list files/dirs, we'd need to add it here
+
 	for _, b := range k.Bases {
 		if err = t.accumulateEntry(b); err != nil {
 			return err

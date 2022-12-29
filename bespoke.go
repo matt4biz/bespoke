@@ -3,6 +3,7 @@ package bespoke
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -157,7 +158,9 @@ func (r *Runner) tempFile(rel string) string {
 	fn := filepath.Join(r.Temp, rel)
 	dir := filepath.Dir(fn)
 
-	_ = os.MkdirAll(dir, 0777)
+	if err := os.MkdirAll(dir, 0777); err != nil {
+		log.Fatalf("temp dirs: %s", err)
+	}
 
 	return fn
 }
@@ -179,6 +182,8 @@ func (r *Runner) readFileSkipping(fn string) ([]byte, error) {
 	return []byte(s), nil
 }
 
+// runKustomize actually uses the kustomize API directly
+// TODO - add support for the build flags the real too accepts
 func (r *Runner) runKustomize(root string) error {
 	fSys := filesys.MakeFsOnDisk()
 	pc := types.EnabledPluginConfig(types.BploUseStaticallyLinked)
