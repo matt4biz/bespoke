@@ -10,6 +10,9 @@ import (
 	"sigs.k8s.io/kustomize/api/types"
 )
 
+// readKustomization finds one of the correct files in the
+// target directory and parses it; it fails if there is not
+// exactly one kustomization file.
 func (t *Target) readKustomization() (*types.Kustomization, error) {
 	var count int
 	var kfile types.Kustomization
@@ -39,16 +42,17 @@ func (t *Target) readKustomization() (*types.Kustomization, error) {
 	return &kfile, nil
 }
 
+// accumulate works on the entries of a single kustomization file,
+// calling itself recursively for other target directories. Its
+// code is dependent on the kustomization file format and meaning;
+// if there's a new category that can list files/dirs, we'd need
+// to add it here.
 func (t *Target) accumulate() error { //nolint:gocyclo
 	k, err := t.readKustomization()
 
 	if err != nil {
 		return err
 	}
-
-	// NOTE - this code is dependent on the kustomization
-	//  file format and meaning; if there's a new category
-	//  that can list files/dirs, we'd need to add it here
 
 	for _, b := range k.Bases {
 		if err = t.accumulateEntry(b); err != nil {
@@ -145,6 +149,8 @@ func (t *Target) accumulate() error { //nolint:gocyclo
 	return nil
 }
 
+// accumulateEntry handles one entry from a kustomization file
+// which might be a file or a directory (or a URL to ignore).
 func (t *Target) accumulateEntry(path string) error {
 	root := path
 

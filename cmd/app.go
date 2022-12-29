@@ -22,7 +22,7 @@ type App struct {
 }
 
 type Command interface {
-	Run() int
+	Run() error
 }
 
 func runApp(args []string, version string, stdin io.ReadCloser, stdout, stderr io.WriteCloser) int {
@@ -45,7 +45,12 @@ func runApp(args []string, version string, stdin io.ReadCloser, stdout, stderr i
 		return -1
 	}
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return 1
+	}
+
+	return 0
 }
 
 func (a *App) usage() {

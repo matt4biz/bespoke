@@ -43,10 +43,10 @@ func TestKustomize(t *testing.T) {
 	buffer := bytes.Buffer{}
 	env := []string{"LC_NGINX_VERSION=1.14.2", "LC_APP=httpbin", "LC_PORT=8000"}
 	runner := Runner{Args: []string{"samples/files/overlays/dev"}, Env: env, Writer: &buffer}
-	code := runner.Run()
+	err := runner.Run()
 
-	if code != 0 {
-		t.Fatalf("run failed: %d", code)
+	if err != nil {
+		t.Fatalf("run failed: %d", err)
 	}
 
 	golden, err := os.ReadFile("samples/golden.yaml")

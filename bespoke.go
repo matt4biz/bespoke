@@ -14,40 +14,6 @@ import (
 	"github.com/matt4biz/envsubst/parse"
 )
 
-// we get Root, we make enclosingDir, which contains all the dirs including the copy of root
-// as we process dirs from Root's k-file, we will need to make them under enclosingDir
-//
-// - top
-//   |
-//   - bases
-//     |
-//     - apps
-//       |
-//       - deployment.yaml
-//       - kustomization.yaml, which references deployment.yaml
-//     - kustomization.yaml, which references apps
-//   - overlays
-//     |
-//     - dev
-//       |
-//       - kustomization.yaml which references ../../bases
-//     - prd
-//
-// we'll make ED and within it bases, bases/apps, overlays, overlays/dev
-// but we start with top/overlays/dev/
-//
-// so each time we start a new accum dir target, we must make the dir
-// we may be called within that dev dir, so we don't originally know
-// what the top-level dir is going to be
-//
-// so we should accumulate files/dirs first, and then do the copying
-// once we know what dirs to make / where they go ...
-
-// 1. create a tempdir
-// 2. run the add-target loop over the input dir
-// 3. as files are copied, substitute env vars
-// 4. then run kustomize on the tempdir
-
 type Runner struct {
 	Args   []string
 	Env    []string // key=value pairs, not a map
@@ -56,28 +22,28 @@ type Runner struct {
 	Debug  bool
 }
 
-func (r *Runner) Run() int {
+// Run handles the top-level work: identify the target, create a temp
+// directory for the copies, copy/substitute the targeted files, and
+// then run kustomize on that temp directory.
+func (r *Runner) Run() error {
 	cwd, err := os.Getwd()
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "can't get CWD: %s\n", err)
-		return 1
+		return fmt.Errorf("can't get CWD: %w", err)
 	}
 
 	if len(r.Args) > 0 {
 		cwd, err = filepath.Abs(r.Args[0])
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "can't fix CWD: %s\n", err)
-			return 1
+			return fmt.Errorf("can't fix CWD: %w", err)
 		}
 	}
 
 	r.Temp, err = os.MkdirTemp(os.TempDir(), "bespoke-")
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "can't make tempdir: %s\n", err)
-		return 1
+		return fmt.Errorf("can't make tempdir: %w", err)
 	}
 
 	if !r.Debug {
@@ -88,41 +54,36 @@ func (r *Runner) Run() int {
 		r.Env = os.Environ()
 	}
 
+	// recursively read through the kustomization files
+	// and find all files that will need to be copied
+
 	target, err := Accumulate(cwd)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "can't process target: %s\n", err)
-		return 1
+		return fmt.Errorf("can't process target: %w", err)
 	}
+
+	// read from the abs path to a relative path in the
+	// temp directory, substituting env vars on the way
 
 	for k, v := range target.top().relativeFiles() {
 		fn := r.tempFile(v)
 		data, err := r.readFileSkipping(k)
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "can't process file: %s\n", err)
-			return 1
+			return fmt.Errorf("can't process file: %w", err)
 		}
 
 		if err = os.WriteFile(fn, data, 0555); err != nil {
-			fmt.Fprintf(os.Stderr, "can't write file: %s\n", err)
-			return 1
+			return fmt.Errorf("can't write file: %w", err)
 		}
 	}
 
-	root, err := filepath.Rel(target.top().Root, target.Root)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "can't relativize: %s\n", err)
-		return 1
+	if err = r.runKustomize(target); err != nil {
+		return fmt.Errorf("can't run tool: %w", err)
 	}
 
-	if err = r.runKustomize(root); err != nil {
-		fmt.Fprintf(os.Stderr, "can't run tool: %s\n", err)
-		return 1
-	}
-
-	return 0
+	return nil
 }
 
 // Accumulate starts in the given directory and walks the tree
@@ -154,6 +115,9 @@ func (r *Runner) Cleanup() {
 	}
 }
 
+// tempFile takes a relative path, returns an absolute path
+// within the temp directory, ensuring that any intermediate
+// directories have been created.
 func (r *Runner) tempFile(rel string) string {
 	fn := filepath.Join(r.Temp, rel)
 	dir := filepath.Dir(fn)
@@ -165,6 +129,8 @@ func (r *Runner) tempFile(rel string) string {
 	return fn
 }
 
+// readFileSkipping reads a file and substitutes defined env
+// vars in it, returning the data to write back out.
 func (r *Runner) readFileSkipping(fn string) ([]byte, error) {
 	b, err := os.ReadFile(fn)
 
@@ -182,9 +148,15 @@ func (r *Runner) readFileSkipping(fn string) ([]byte, error) {
 	return []byte(s), nil
 }
 
-// runKustomize actually uses the kustomize API directly
+// runKustomize actually uses the kustomize API directly.
 // TODO - add support for the build flags the real too accepts
-func (r *Runner) runKustomize(root string) error {
+func (r *Runner) runKustomize(target *Target) error {
+	root, err := filepath.Rel(target.top().Root, target.Root)
+
+	if err != nil {
+		return fmt.Errorf("can't relativize: %w", err)
+	}
+
 	fSys := filesys.MakeFsOnDisk()
 	pc := types.EnabledPluginConfig(types.BploUseStaticallyLinked)
 

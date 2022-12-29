@@ -17,7 +17,7 @@ type Target struct {
 
 // pathToTarget takes a relative path which may include '..' and
 // finds/creates a target above or below (and intervening targets
-// as needed) and returns the one to work on
+// as needed) and returns the one to work on.
 func (t *Target) pathToTarget(path string) (*Target, error) {
 	var err error
 
@@ -85,7 +85,7 @@ func (t *Target) pathToTarget(path string) (*Target, error) {
 
 // top returns the top-most directory, i.e., the root path
 // of the "oldest" ancestor above this target, which will
-// be the path to use to make relative all files to create
+// be the path to use to make relative all files to create.
 func (t *Target) top() *Target {
 	if t.Parent == nil {
 		return t
@@ -96,7 +96,7 @@ func (t *Target) top() *Target {
 
 // files returns a list of absolute file paths from this
 // target and all its children; so it should be run on a
-// "top" target to get the whole tree
+// "top" target to get the whole tree.
 func (t *Target) files() []string {
 	if len(t.Files) == 0 && len(t.Children) == 0 {
 		return nil
@@ -118,7 +118,7 @@ func (t *Target) files() []string {
 // relativeFiles returns a map of absolute file paths from this
 // target and all its children to their relative paths from this
 // target's root; so it should be run on a "top" target  to get
-// the whole tree
+// the whole tree.
 func (t *Target) relativeFiles() map[string]string {
 	if len(t.Files) == 0 && len(t.Children) == 0 {
 		return nil
