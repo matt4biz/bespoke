@@ -6,20 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
 )
-
-var eligibleFiles = []string{
-	"kustomization.yaml",
-	"kustomization.yml",
-	"kustomization",
-}
 
 func (t *Target) readKustomization() (*types.Kustomization, error) {
 	var count int
 	var kfile types.Kustomization
 
-	for _, file := range eligibleFiles {
+	for _, file := range konfig.RecognizedKustomizationFileNames() {
 		path := filepath.Join(t.Root, file)
 		data, err := os.ReadFile(path)
 

@@ -54,6 +54,7 @@ linters:
   disable-all: true
   enable:
     - errcheck
+    - errorlint
     - goconst
     - gocritic
     - gocyclo

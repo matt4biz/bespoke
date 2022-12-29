@@ -29,7 +29,7 @@ func runApp(args []string, version string, stdin io.ReadCloser, stdout, stderr i
 	a := App{version: version, stdin: stdin, stdout: stdout, stderr: stderr}
 
 	if err := a.fromArgs(args); err != nil {
-		if err == ErrUsage {
+		if errors.Is(err, ErrUsage) {
 			return 0
 		}
 
