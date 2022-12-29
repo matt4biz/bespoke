@@ -7,5 +7,7 @@ type BuildCommand struct {
 }
 
 func (cmd *BuildCommand) Run() int {
-	return bespoke.Run(cmd.args)
+	runner := bespoke.Runner{Args: cmd.args, Writer: cmd.stdout}
+
+	return runner.Run()
 }

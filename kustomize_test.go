@@ -1,6 +1,8 @@
 package bespoke
 
 import (
+	"bytes"
+	"os"
 	"reflect"
 	"sort"
 	"testing"
@@ -34,5 +36,26 @@ func TestAccumulate(t *testing.T) {
 
 	if !reflect.DeepEqual(expected, files) {
 		t.Errorf("invalid list %s", cmp.Diff(expected, files))
+	}
+}
+
+func TestKustomize(t *testing.T) {
+	buffer := bytes.Buffer{}
+	env := []string{"LC_NGINX_VERSION=1.14.2", "LC_APP=httpbin", "LC_PORT=8000"}
+	runner := Runner{Args: []string{"samples/files/overlays/dev"}, Env: env, Writer: &buffer}
+	code := runner.Run()
+
+	if code != 0 {
+		t.Fatalf("run failed: %d", code)
+	}
+
+	golden, err := os.ReadFile("samples/golden.yaml")
+
+	if err != nil {
+		t.Fatalf("can't read golden data: %s", err)
+	}
+
+	if !cmp.Equal(golden, buffer.Bytes()) {
+		t.Errorf("invalid output: %s", cmp.Diff(string(golden), buffer.String()))
 	}
 }

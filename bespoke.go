@@ -2,8 +2,15 @@ package bespoke
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+
+	"sigs.k8s.io/kustomize/api/krusty"
+	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
+
+	"github.com/matt4biz/envsubst/parse"
 )
 
 // we get Root, we make enclosingDir, which contains all the dirs including the copy of root
@@ -40,9 +47,15 @@ import (
 // 3. as files are copied, substitute env vars
 // 4. then run kustomize on the tempdir
 
-func Run(args []string) int {
-	fmt.Println("run bespoke:", args)
+type Runner struct {
+	Args   []string
+	Env    []string // key=value pairs, not a map
+	Writer io.Writer
+	Temp   string
+	Debug  bool
+}
 
+func (r *Runner) Run() int {
 	cwd, err := os.Getwd()
 
 	if err != nil {
@@ -50,8 +63,8 @@ func Run(args []string) int {
 		return 1
 	}
 
-	if len(args) > 0 {
-		cwd, err = filepath.Abs(args[0])
+	if len(r.Args) > 0 {
+		cwd, err = filepath.Abs(r.Args[0])
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "can't fix CWD: %s\n", err)
@@ -59,18 +72,54 @@ func Run(args []string) int {
 		}
 	}
 
-	fmt.Println(cwd)
-
-	dir, err := os.MkdirTemp(os.TempDir(), "bespoke-")
+	r.Temp, err = os.MkdirTemp(os.TempDir(), "bespoke-")
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "can't make tempdir: %s\n", err)
 		return 1
 	}
 
-	fmt.Println(dir)
+	if !r.Debug {
+		defer r.Cleanup()
+	}
 
-	defer os.RemoveAll(dir)
+	if len(r.Env) == 0 {
+		r.Env = os.Environ()
+	}
+
+	target, err := Accumulate(cwd)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "can't process target: %s\n", err)
+		return 1
+	}
+
+	for k, v := range target.top().relativeFiles() {
+		fn := r.tempFile(v)
+		data, err := r.readFileSkipping(k)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "can't process file: %s\n", err)
+			return 1
+		}
+
+		if err = os.WriteFile(fn, data, 0555); err != nil {
+			fmt.Fprintf(os.Stderr, "can't write file: %s\n", err)
+			return 1
+		}
+	}
+
+	root, err := filepath.Rel(target.top().Root, target.Root)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "can't relativize: %s\n", err)
+		return 1
+	}
+
+	if err = r.runKustomize(root); err != nil {
+		fmt.Fprintf(os.Stderr, "can't run tool: %s\n", err)
+		return 1
+	}
 
 	return 0
 }
@@ -96,4 +145,62 @@ func Accumulate(root string) (t *Target, err error) {
 	t = &Target{Root: root}
 
 	return t, t.accumulate()
+}
+
+func (r *Runner) Cleanup() {
+	if r.Debug {
+		_ = os.RemoveAll(r.Temp)
+	}
+}
+
+func (r *Runner) tempFile(rel string) string {
+	fn := filepath.Join(r.Temp, rel)
+	dir := filepath.Dir(fn)
+
+	_ = os.MkdirAll(dir, 0777)
+
+	return fn
+}
+
+func (r *Runner) readFileSkipping(fn string) ([]byte, error) {
+	b, err := os.ReadFile(fn)
+
+	if err != nil {
+		return nil, err
+	}
+
+	restrict := parse.Restrictions{NoFail: true}
+	s, err := parse.New("file", r.Env, &restrict).Parse(string(b))
+
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(s), nil
+}
+
+func (r *Runner) runKustomize(root string) error {
+	fSys := filesys.MakeFsOnDisk()
+	pc := types.EnabledPluginConfig(types.BploUseStaticallyLinked)
+
+	pc.HelmConfig.Enabled = true
+	pc.HelmConfig.Command = "helm"
+
+	opts := krusty.Options{PluginConfig: pc}
+	k := krusty.MakeKustomizer(&opts)
+	m, err := k.Run(fSys, filepath.Join(r.Temp, root))
+
+	if err != nil {
+		return err
+	}
+
+	yml, err := m.AsYaml()
+
+	if err != nil {
+		return err
+	}
+
+	_, err = r.Writer.Write(yml)
+
+	return err
 }

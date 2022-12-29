@@ -133,7 +133,15 @@ func (t *Target) accumulate() error { //nolint:gocyclo
 		}
 	}
 
-	// TODO - what about helm charts/inflators?
+	for _, b := range k.HelmCharts {
+		if err = t.accumulateEntry(b.Repo); err != nil {
+			return err
+		}
+
+		if err = t.accumulateEntry(b.ValuesFile); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
