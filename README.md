@@ -1,6 +1,9 @@
 # bespoke
 Run kustomize after substituting environment variables
 
+> Note: this tool is still in its "infancy" and has not yet been
+> released; use it at your own risk.
+
 Most folks run `kustomize` and then use `envsubst` to substitute 
 environment variables. They do it in this order because
 `kustomize` generates a single output stream that's easy to
